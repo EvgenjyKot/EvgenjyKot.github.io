@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Mini App Store</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    body { background: #0f1115; color: #f1f5f9; font-family: system-ui, -apple-system, sans-serif; padding: 16px 16px 96px; }
+    .top { margin-bottom: 16px; }
+    .top h1 { font-size: 20px; margin-bottom: 4px; }
+    .top p { font-size: 13px; color: #94a3b8; }
+    .tabs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 12px; margin-bottom: 8px; scrollbar-width: none; }
+    .tabs::-webkit-scrollbar { display: none; }
+    .tab { background: #181b22; border: 1px solid #262b36; color: #94a3b8; padding: 8px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+    .tab.active { background: #2563eb; border-color: #2563eb; color: #fff; }
+    .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    .card { background: #181b22; border: 1px solid #232730; border-radius: 14px; padding: 12px; display: flex; flex-direction: column; }
+    .thumb { height: 92px; border-radius: 10px; background: linear-gradient(135deg, #1e293b, #0f172a); display: flex; align-items: center; justify-content: center; font-size: 38px; margin-bottom: 10px; }
+    .title { font-size: 14px; font-weight: 600; margin-bottom: 4px; min-height: 36px; }
+    .price { font-size: 15px; font-weight: 700; color: #60a5fa; margin-bottom: 10px; }
+    .add-btn { margin-top: auto; width: 100%; background: #232834; color: #fff; border: none; padding: 9px; border-radius: 9px; font-weight: 600; font-size: 13px; cursor: pointer; }
+    .counter { margin-top: auto; display: flex; align-items: center; justify-content: space-between; background: #2563eb; border-radius: 9px; overflow: hidden; }
+    .counter button { background: none; border: none; color: #fff; width: 34px; height: 34px; font-size: 18px; font-weight: 700; cursor: pointer; }
+    .counter span { font-size: 14px; font-weight: 700; }
+    .bar { position: fixed; left: 12px; right: 12px; bottom: 12px; background: #2563eb; border-radius: 14px; padding: 14px 18px; display: none; align-items: center; justify-content: space-between; box-shadow: 0 10px 25px rgba(0,0,0,0.5); cursor: pointer; }
+    .bar.show { display: flex; }
+    .bar-info { font-size: 14px; font-weight: 700; }
+    .bar-btn { background: #fff; color: #0f1115; padding: 8px 14px; border-radius: 9px; font-weight: 700; font-size: 13px; }
+    .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: none; align-items: flex-end; z-index: 20; }
+    .modal.open { display: flex; }
+    .sheet { background: #181b22; width: 100%; border-radius: 20px 20px 0 0; padding: 20px 16px 28px; border-top: 1px solid #2a303c; }
+    .sheet h2 { font-size: 18px; margin-bottom: 12px; }
+    .list { max-height: 180px; overflow-y: auto; margin-bottom: 14px; font-size: 14px; color: #cbd5e1; }
+    .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #232730; }
+    .inp { width: 100%; background: #0f1115; border: 1px solid #2a303c; color: #fff; padding: 11px 12px; border-radius: 10px; margin-bottom: 12px; font-size: 14px; }
+    .submit { width: 100%; background: #22c55e; color: #052e16; border: none; padding: 13px; border-radius: 11px; font-weight: 700; font-size: 15px; cursor: pointer; }
+    .close { width: 100%; background: none; border: none; color: #94a3b8; padding: 10px; margin-top: 4px; font-size: 13px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div class="top">
+    <h1>Витрина товаров</h1>
+    <p>Демо-интерфейс Telegram Mini App</p>
+  </div>
+
+  <div class="tabs" id="tabs"></div>
+  <div class="grid" id="grid"></div>
+
+  <div class="bar" id="bar" onclick="openSheet()">
+    <div class="bar-info" id="barInfo">0 ₽</div>
+    <div class="bar-btn">Корзина →</div>
+  </div>
+
+  <div class="modal" id="modal">
+    <div class="sheet" id="sheetContent">
+      <h2>Ваш заказ</h2>
+      <div class="list" id="orderList"></div>
+      <input class="inp" id="comment" placeholder="Комментарий или адрес доставки (тест)">
+      <button class="submit" onclick="sendOrder()">Подтвердить заказ</button>
+      <button class="close" onclick="closeSheet()">Вернуться в каталог</button>
+    </div>
+  </div>
+
+  <script>
+    const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+    if (tg) { tg.ready(); tg.expand(); }
+
+    const items = [
+      { id: 1, cat: 'Гаджеты', icon: '🎧', name: 'Беспроводные наушники Pro', price: 6990 },
+      { id: 2, cat: 'Гаджеты', icon: '⌨️', name: 'Механическая клавиатура 75%', price: 8490 },
+      { id: 3, cat: 'Аксессуары', icon: '⌚', name: 'Смарт-часы Titanium', price: 11900 },
+      { id: 4, cat: 'Аксессуары', icon: '🎙️', name: 'Студийный USB-микрофон', price: 5400 },
+      { id: 5, cat: 'Цифровое', icon: '💎', name: 'Подписка Cloud Plus (1 год)', price: 2990 },
+      { id: 6, cat: 'Цифровое', icon: '⚡', name: 'Подарочный сертификат', price: 3000 }
+    ];
+
+    const cats = ['Все', 'Гаджеты', 'Аксессуары', 'Цифровое'];
+    let curCat = 'Все';
+    const cart = {};
+
+    function haptic() {
+      if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+    }
+
+    function renderTabs() {
+      document.getElementById('tabs').innerHTML = cats.map(c =>
+        `<button class="tab ${c === curCat ? 'active' : ''}" onclick="setCat('${c}')">${c}</button>`
+      ).join('');
+    }
+
+    function setCat(c) { haptic(); curCat = c; renderTabs(); renderGrid(); }
+
+    function changeQty(id, d) {
+      haptic();
+      cart[id] = (cart[id] || 0) + d;
+      if (cart[id] <= 0) delete cart[id];
+      renderGrid();
+      updateBar();
+    }
+
+    function renderGrid() {
+      const list = curCat === 'Все' ? items : items.filter(i => i.cat === curCat);
+      document.getElementById('grid').innerHTML = list.map(i => {
+        const q = cart[i.id] || 0;
+        const ctrl = q === 0
+          ? `<button class="add-btn" onclick="changeQty(${i.id}, 1)">В корзину</button>`
+          : `<div class="counter"><button onclick="changeQty(${i.id}, -1)">−</button><span>${q}</span><button onclick="changeQty(${i.id}, 1)">+</button></div>`;
+        return `<div class="card"><div class="thumb">${i.icon}</div><div class="title">${i.name}</div><div class="price">${i.price.toLocaleString('ru-RU')} ₽</div>${ctrl}</div>`;
+      }).join('');
+    }
+
+    function getTotals() {
+      let count = 0, sum = 0;
+      const lines = [];
+      for (const id in cart) {
+        const it = items.find(x => x.id === Number(id));
+        count += cart[id];
+        sum += it.price * cart[id];
+        lines.push({ name: it.name, qty: cart[id], sum: it.price * cart[id] });
+      }
+      return { count, sum, lines };
+    }
+
+    function updateBar() {
+      const { count, sum } = getTotals();
+      const bar = document.getElementById('bar');
+      if (count > 0) {
+        bar.classList.add('show');
+        document.getElementById('barInfo').textContent = `${count} шт. • ${sum.toLocaleString('ru-RU')} ₽`;
+      } else {
+        bar.classList.remove('show');
+      }
+    }
+
+    function openSheet() {
+      haptic();
+      const { sum, lines } = getTotals();
+      document.getElementById('orderList').innerHTML = lines.map(l =>
+        `<div class="row"><span>${l.name} × ${l.qty}</span><b>${l.sum.toLocaleString('ru-RU')} ₽</b></div>`
+      ).join('') + `<div class="row"><b>Итого</b><b>${sum.toLocaleString('ru-RU')} ₽</b></div>`;
+      document.getElementById('modal').classList.add('open');
+    }
+
+    function closeSheet() { document.getElementById('modal').classList.remove('open'); }
+
+    function sendOrder() {
+      haptic();
+      const { sum, lines } = getTotals();
+      const payload = JSON.stringify({
+        items: lines,
+        total: sum,
+        comment: document.getElementById('comment').value.trim()
+      });
+
+      if (tg && tg.platform !== 'unknown' && !tg.initData) {
+        tg.sendData(payload);
+        return;
+      }
+
+      document.getElementById('sheetContent').innerHTML = `
+        <h2>✅ Тестовый заказ принят!</h2>
+        <p style="color:#94a3b8;font-size:14px;margin-bottom:16px">Сумма: <b>${sum.toLocaleString('ru-RU')} ₽</b>. В рабочем проекте заявка мгновенно уходит в бота и менеджеру.</p>
+        <button class="submit" onclick="if(tg && tg.platform!=='unknown'){tg.close()}else{location.reload()}">Готово</button>
+      `;
+    }
+
+    renderTabs();
+    renderGrid();
+  </script>
+</body>
+</html>
